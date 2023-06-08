@@ -12,20 +12,6 @@ import (
 	"unicode"
 )
 
-// "strings"
-// add options to read a text file, process it (with optional processing modes) and output it to naeq_X.md
-// command line options
-
-// processing modes: -p=
-//  word -- processes each word as an individual calculatable thing (this is the default)
-//  line -- processes each line as the calculatable thing
-//  markov -- uses markov-chain chunking and processes each chung as the calculatable thing
-
-// file options
-// -f=filename -- reads the named file and processes all words in it
-// -d=directory -- reads all files in the directory and processes them (sequentially)
-// -o=directory -- writes/appends to NAEQ_X.md files in named directory
-
 func isFlagPassed(name string) bool {
 	found := false
 	flag.Visit(func(f *flag.Flag) {
@@ -49,7 +35,7 @@ func visit(pmode string, omode string) filepath.WalkFunc {
 	return func(p string, info os.FileInfo, err error) error {
 		check(err)
 		if !info.IsDir() {
-			fmt.Println("p is", p, "n is", info.Name())
+			//			fmt.Println("p is", p, "n is", info.Name())
 			return processFile(p, pmode, omode)
 		}
 		return nil
@@ -70,7 +56,7 @@ func removeDuplicate[T string | int](sliceList []T) []T {
 }
 
 func processFile(filename string, pmode string, omode string) error {
-	fmt.Println("gonna process a file!", filename)
+	//	fmt.Println("gonna process a file!", filename)
 	f, err := os.Open(filename)
 	check(err)
 	defer f.Close()
@@ -78,10 +64,10 @@ func processFile(filename string, pmode string, omode string) error {
 	scanner := bufio.NewScanner(bufio.NewReader(f))
 
 	if pmode == "word" {
-		fmt.Println("using word processing mode")
+		//		fmt.Println("using word processing mode")
 		scanner.Split(bufio.ScanWords)
 	} else if pmode == "line" {
-		fmt.Println("using line processing mode")
+		//		fmt.Println("using line processing mode")
 		scanner.Split(bufio.ScanLines)
 	} else {
 		return errors.New("can't do markov yet")
@@ -115,6 +101,19 @@ func processFile(filename string, pmode string, omode string) error {
 	return nil
 }
 
+// "strings"
+// add options to read a text file, process it (with optional processing modes) and output it to naeq_X.md
+// command line options
+
+// processing modes: -p=
+//  word -- processes each word as an individual calculatable thing (this is the default)
+//  line -- processes each line as the calculatable thing
+//  markov -- uses markov-chain chunking and processes each chung as the calculatable thing
+
+// file options
+// -f=filename -- reads the named file and processes all words in it
+// -d=directory -- reads all files in the directory and processes them (sequentially)
+// -o=directory -- writes/appends to NAEQ_X.md files in named directory
 func main() {
 	processPtr := flag.String("p", "word", "processing mode: word, line or markov")
 	inputDirPtr := flag.String("d", ".", "input directory; incompatible with -f")

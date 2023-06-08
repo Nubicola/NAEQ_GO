@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func BenchmarkEQalculate(b *testing.B) {
+/*func BenchmarkEQalculate(b *testing.B) {
 	data := getCorpusStrings(b)
 	// this is needed so the EQ Value map is filled out
 	InitMyMap()
@@ -19,7 +19,7 @@ func BenchmarkEQalculate(b *testing.B) {
 		_ = EQalculate(word)
 		//fmt.Println(v)
 	}
-}
+}*/
 
 func BenchmarkEQalculateMod(b *testing.B) {
 	data := getCorpusStrings(b)

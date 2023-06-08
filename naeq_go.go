@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"unicode"
 )
@@ -33,11 +35,72 @@ func isFlagPassed(name string) bool {
 	return found
 }
 
-// some helper
+// error checking
 func check(e error) {
 	if e != nil {
 		panic(e)
 	}
+}
+
+// function is called when traversing directories for each element
+// doing a little closure so the processing-mode flag can be passed in
+func visit(pmode string, omode string) filepath.WalkFunc {
+	return func(p string, info os.FileInfo, err error) error {
+		check(err)
+		if !info.IsDir() {
+			fmt.Println("p is", p, "n is", info.Name())
+			return processFile(p, pmode, omode)
+		}
+		return nil
+	}
+}
+
+// from stack overflow: https://stackoverflow.com/questions/66643946/how-to-remove-duplicates-strings-or-int-from-slice-in-go
+func removeDuplicate[T string | int](sliceList []T) []T {
+	allKeys := make(map[T]bool)
+	list := []T{}
+	for _, item := range sliceList {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
+func processFile(filename string, pmode string, omode string) error {
+	fmt.Println("gonna process a file!", filename)
+	f, err := os.Open(filename)
+	check(err)
+	defer f.Close()
+
+	scanner := bufio.NewScanner(bufio.NewReader(f))
+
+	if pmode == "word" {
+		fmt.Println("using word processing mode")
+		scanner.Split(bufio.ScanWords)
+	} else if pmode == "line" {
+		fmt.Println("using line processing mode")
+		scanner.Split(bufio.ScanLines)
+	} else {
+		return errors.New("can't do markov yet")
+	}
+
+	// map kv: keys are the EQ value, values are a slice of strings that match the value
+	eqs := make(map[int][]string)
+
+	for scanner.Scan() {
+		val := EQalculateMod(scanner.Text())
+		eqs[val] = removeDuplicate[string](append(eqs[val], scanner.Text()))
+	}
+
+	fmt.Println(eqs)
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "reading input:", err)
+		return err
+	}
+	return nil
 }
 
 func main() {
@@ -48,9 +111,8 @@ func main() {
 
 	flag.Parse()
 
-	// check for incompatibilities
+	// check for incompatibile flags
 	if isFlagPassed("d") && isFlagPassed("f") {
-		//fmt.Println("-d and -f are incompatible, please see help")
 		flag.PrintDefaults()
 		return
 	} else if (isFlagPassed("f") || isFlagPassed("d")) && len(flag.Args()) > 0 {
@@ -65,39 +127,12 @@ func main() {
 
 	// let's process a file and output it to stdout
 	if isFlagPassed("f") {
-		fmt.Println("gonna process a file!", *filePtr)
-		f, err := os.Open(*filePtr)
-		check(err)
-
-		fio := bufio.NewReader(f)
-		scanner := bufio.NewScanner(fio)
-
-		if *processPtr == "word" {
-			fmt.Println("using word processing mode")
-			scanner.Split(bufio.ScanWords)
-
-		} else if *processPtr == "line" {
-			fmt.Println("using line processing mode")
-			scanner.Split(bufio.ScanLines)
-		} else {
-			fmt.Fprintln(os.Stderr, "sorry can't do markov yet")
-			return
-		}
-
-		for scanner.Scan() {
-			fmt.Printf("%s: %d\n", scanner.Text(), EQalculateMod(scanner.Text()))
-		}
-		if err := scanner.Err(); err != nil {
-			fmt.Fprintln(os.Stderr, "reading input:", err)
-		}
-
+		processFile(*filePtr, *processPtr, *outputDirPtr)
+	} else if isFlagPassed("d") {
+		// read and process all files in a directory
+		filepath.Walk(*inputDirPtr, visit(*processPtr, *outputDirPtr))
 	}
 
-	fmt.Println("process:", *processPtr)
-	fmt.Println("inputDir", *inputDirPtr)
-	fmt.Println("outputDir", *outputDirPtr)
-	fmt.Println("file", *filePtr)
-	fmt.Println("tail:", flag.Args())
 	for _, w := range flag.Args() {
 		fmt.Println(w, EQalculateMod(w))
 	}

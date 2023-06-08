@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"unicode"
 )
 
@@ -90,11 +91,22 @@ func processFile(filename string, pmode string, omode string) error {
 	eqs := make(map[int][]string)
 
 	for scanner.Scan() {
-		val := EQalculateMod(scanner.Text())
-		eqs[val] = removeDuplicate[string](append(eqs[val], scanner.Text()))
+		ns := ""
+		val := 0
+		for _, w := range strings.Split(scanner.Text(), " ") {
+			cs := clearString(w)
+			val += EQalculateMod(cs)
+			//ns = strings.Join(make([]string:{ns, w}, " "))
+			ns += " " + cs
+		}
+		eqs[val] = removeDuplicate[string](append(eqs[val], strings.TrimSpace(ns)))
 	}
 
-	fmt.Println(eqs)
+	if omode == "" {
+		for eqval, words := range eqs {
+			fmt.Println(eqval, words)
+		}
+	}
 
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading input:", err)
@@ -144,7 +156,7 @@ func clearString(str string) string {
 	return nonAlphanumericRegex.ReplaceAllString(str, "")
 }
 
-// calculate EQ of word using % operator
+// calculate EQ of word
 func EQalculateMod(word string) int {
 	value := 0
 	for _, c := range clearString(word) {

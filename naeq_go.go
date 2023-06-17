@@ -31,12 +31,12 @@ func check(e error) {
 
 // function is called when traversing directories for each element
 // doing a little closure so the processing-mode flag can be passed in
-func visit(pmode string, omode string, eqs *map[int][]string) filepath.WalkFunc {
+func visit(pmode string, eqs *map[int][]string) filepath.WalkFunc {
 	return func(p string, info os.FileInfo, err error) error {
 		check(err)
 		if !info.IsDir() {
 			//			fmt.Println("p is", p, "n is", info.Name())
-			err := processFile(p, pmode, omode, eqs)
+			err := processFile(p, pmode, eqs)
 			return err
 		}
 		return nil
@@ -72,7 +72,7 @@ func scanStrings(scanner *bufio.Scanner, eqs *map[int][]string) {
 	}
 }
 
-func processFile(filename string, pmode string, omode string, eqs *map[int][]string) error {
+func processFile(filename string, pmode string, eqs *map[int][]string) error {
 	// map kv: keys are the EQ value, values are a slice of string {
 	//	fmt.Println("gonna process a file!", filename)
 	f, err := os.Open(filename)
@@ -93,31 +93,26 @@ func processFile(filename string, pmode string, omode string, eqs *map[int][]str
 
 	scanStrings(scanner, eqs)
 	return nil
-	/*
-	   if omode == "" { // just print to stdout
+}
 
-	   		for eqval, words := range eqs {
-	   			fmt.Println(eqval, words)
-	   		}
-	   	} else { // output to set of files in the given directory
-
-	   		// directory must exist. for all keys in the map, create/open NAEQ_key.md. Parse the whole file (just like the scanner above, actually)
-	   		// and append to the eqs value.
-	   		c, err := os.ReadDir(omode)
-	   		check(err)
-	   		fmt.Println("Listing subdir/parent")
-	   		for _, entry := range c {
-	   			fmt.Println(" ", entry.Name(), entry.IsDir())
-	   		}
-	   	}
-
-	   	if err := scanner.Err(); err != nil {
-	   		fmt.Fprintln(os.Stderr, "reading input:", err)
-	   		return eqs, err
-	   	}
-
-	   return eqs, nil
-	*/
+func writeToFiles(directory string, eqs *map[int][]string) error {
+	// directory must exist. for all keys in the map, create/open NAEQ_key.md. Parse the whole file (just like the scanner above, actually)
+	// and append to the eqs value.
+	c, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	// go through the values
+	// for each value, check if a fiel is there. create/open it and read values into a new eqs (for speed, rather than in the entire map again)
+	// then write the values back into that file sorted alphabetically
+	for val := range *eqs {
+		var str = fmt.Sprintf("NAEQ_%d.md", val)
+		fmt.Println("would look for file", str)
+	}
+	for _, entry := range c {
+		fmt.Println(" ", entry.Name(), entry.IsDir())
+	}
+	return nil
 }
 
 // "strings"
@@ -148,7 +143,7 @@ func main() {
 	} else if (isFlagPassed("f") || isFlagPassed("d")) && len(flag.Args()) > 0 {
 		flag.PrintDefaults()
 		return
-	} else if (!isFlagPassed("f") || !isFlagPassed("d")) && len(flag.Args()) == 0 {
+	} else if (!isFlagPassed("f") && !isFlagPassed("d")) && len(flag.Args()) == 0 {
 		flag.PrintDefaults()
 		return
 	}
@@ -161,18 +156,22 @@ func main() {
 	// handle the input source - a file, a directory of files or command line args. Build the map of eq values (value -> list of strings)
 	eqs := make(map[int][]string)
 	if isFlagPassed("f") {
-		check(processFile(*filePtr, *processPtr, *outputDirPtr, &eqs))
+		check(processFile(*filePtr, *processPtr, &eqs))
 	} else if isFlagPassed("d") {
 		// read and process all files in a directory
-		filepath.Walk(*inputDirPtr, visit(*processPtr, *outputDirPtr, &eqs))
+		filepath.Walk(*inputDirPtr, visit(*processPtr, &eqs))
 	} else { // not f or d, must be somthing in the args. Later: also handle stdin
 		r := strings.NewReader(strings.Join(flag.Args(), "\n"))
 		scanner := bufio.NewScanner(r)
 		scanStrings(scanner, &eqs)
 	}
 
-	for val, words := range eqs {
-		fmt.Println(val, words)
+	if isFlagPassed("o") {
+		check(writeToFiles(*outputDirPtr, &eqs))
+	} else {
+		for val, words := range eqs {
+			fmt.Println(val, words)
+		}
 	}
 }
 

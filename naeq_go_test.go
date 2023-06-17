@@ -7,20 +7,6 @@ import (
 	"testing"
 )
 
-/*func BenchmarkEQalculate(b *testing.B) {
-	data := getCorpusStrings(b)
-	// this is needed so the EQ Value map is filled out
-	InitMyMap()
-	words := regexp.MustCompile(`[\w'\-]+`).FindAll(data, -1)
-
-	for _, wordSlice := range words {
-		word := strings.ToLower(string(wordSlice))
-		//fmt.Println(word)
-		_ = EQalculate(word)
-		//fmt.Println(v)
-	}
-}*/
-
 func BenchmarkEQalculateMod(b *testing.B) {
 	data := getCorpusStrings(b)
 	words := regexp.MustCompile(`[\w'\-]+`).FindAll(data, -1)

@@ -7,6 +7,8 @@ In particular,
 -d=dir  to read all files in a directory
 (list on the command line) to process the words on the command line.
 
--o=dir to write NAEQ_##.md files
+-o=dir to write NAEQ_##.md files. It will merge existing content it finds there.
 
-The latter isn't working yet. Instead everything is written to stdout.
+There's not a ton of error checking or resiliance. 
+
+

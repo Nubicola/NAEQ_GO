@@ -12,6 +12,13 @@ import (
 	"unicode"
 )
 
+func copyEqsMap(dest_eqs map[int][]string, src_eqs map[int][]string) {
+	for k, v := range src_eqs {
+		// value is a slice; append to the slice
+		dest_eqs[k] = removeDuplicate[string](append(dest_eqs[k], v...))
+	}
+}
+
 func isFlagPassed(name string) bool {
 	found := false
 	flag.Visit(func(f *flag.Flag) {
@@ -74,7 +81,7 @@ func scanStrings(scanner *bufio.Scanner, eqs *map[int][]string) {
 
 func processFile(filename string, pmode string, eqs *map[int][]string) error {
 	// map kv: keys are the EQ value, values are a slice of string {
-	//	fmt.Println("gonna process a file!", filename)
+	//fmt.Println("gonna process a file!", filename)
 	f, err := os.Open(filename)
 	check(err)
 	defer f.Close()
@@ -98,20 +105,44 @@ func processFile(filename string, pmode string, eqs *map[int][]string) error {
 func writeToFiles(directory string, eqs *map[int][]string) error {
 	// directory must exist. for all keys in the map, create/open NAEQ_key.md. Parse the whole file (just like the scanner above, actually)
 	// and append to the eqs value.
-	c, err := os.ReadDir(directory)
+	dirContents, err := os.ReadDir(directory)
 	if err != nil {
 		return err
 	}
 	// go through the values
 	// for each value, check if a fiel is there. create/open it and read values into a new eqs (for speed, rather than in the entire map again)
 	// then write the values back into that file sorted alphabetically
+	//fmt.Println("eqs before", *eqs)
 	for val := range *eqs {
 		var str = fmt.Sprintf("NAEQ_%d.md", val)
-		fmt.Println("would look for file", str)
+		//fmt.Println("looking for file", str)
+		filename := filepath.Join(directory, str)
+		// look for files in the directory. If it's there copy all its contents into the existing map
+		for i := range dirContents {
+			if dirContents[i].Name() == str {
+				//fmt.Println("found it!")
+				file_eqs := make(map[int][]string)
+				err = processFile(filename, "line", &file_eqs)
+				if err != nil {
+					return err
+				}
+				copyEqsMap(*eqs, file_eqs)
+			}
+		}
+		// now eqs has all the strings from the file as well as from the input. os.Create will truncate a file!
+		f, err := os.Create(filename)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		w := bufio.NewWriter(f)
+		_, err = w.WriteString(strings.Join((*eqs)[val], "\n") + "\n")
+		if err != nil {
+			return err
+		}
+		w.Flush()
 	}
-	for _, entry := range c {
-		fmt.Println(" ", entry.Name(), entry.IsDir())
-	}
+	//fmt.Println("eqs after", *eqs)
 	return nil
 }
 

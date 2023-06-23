@@ -42,7 +42,6 @@ func visit(pmode string, eqs *map[int][]string) filepath.WalkFunc {
 	return func(p string, info os.FileInfo, err error) error {
 		check(err)
 		if !info.IsDir() {
-			//			fmt.Println("p is", p, "n is", info.Name())
 			err := processFile(p, pmode, eqs)
 			return err
 		}
@@ -66,16 +65,8 @@ func removeDuplicate[T string | int](sliceList []T) []T {
 func scanStrings(scanner *bufio.Scanner, eqs *map[int][]string) {
 	leqs := *eqs
 	for scanner.Scan() {
-		ns := ""
-		val := 0
-		// the string may be a line. Clearstring function is not optimal causing this weird extra code.
-		for _, w := range strings.Split(scanner.Text(), " ") {
-			cs := clearString(w)
-			val += EQalculateMod(cs)
-			// this makes too many spaces in the output
-			ns += " " + cs
-		}
-		leqs[val] = removeDuplicate[string](append(leqs[val], strings.ToUpper(strings.TrimSpace(ns))))
+		val := EQalculateMod(scanner.Text())
+		leqs[val] = removeDuplicate[string](append(leqs[val], strings.ToUpper(scanner.Text())))
 	}
 }
 
@@ -197,6 +188,7 @@ func main() {
 		scanStrings(scanner, &eqs)
 	}
 
+	// now handle output; write it to files in the output directory, or write to stdout
 	if isFlagPassed("o") {
 		check(writeToFiles(*outputDirPtr, &eqs))
 	} else {
@@ -206,7 +198,8 @@ func main() {
 	}
 }
 
-var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z]+`)
+// var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z]+`)
+var nonAlphanumericRegex = regexp.MustCompile(`(\b[A-Z0-9]['A-Z0-9]+\b|\b[A-Z]\b)\|?`)
 
 func clearString(str string) string {
 	return nonAlphanumericRegex.ReplaceAllString(str, "")

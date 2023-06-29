@@ -10,12 +10,113 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	prose "github.com/jdkato/prose/v2"
+	slices "golang.org/x/exp/slices"
 )
 
-func copyEqsMap(dest_eqs map[int][]string, src_eqs map[int][]string) {
-	for k, v := range src_eqs {
-		// value is a slice; append to the slice
-		dest_eqs[k] = removeDuplicate[string](append(dest_eqs[k], v...))
+type NAEQ_Processor struct {
+	eqs map[int][]string
+}
+
+func (n *NAEQ_Processor) ProcessTokens(tokens []prose.Token) {
+	fmt.Println("method processTokens")
+	wordyTokens := []string{"SYM", ".", ",", "-", ":", ";", "\""}
+	for _, token := range tokens {
+		val := EQalculateMod(token.Text)
+		if !slices.Contains(wordyTokens, token.Tag) {
+			newWords := append((n.eqs)[val], strings.ToUpper(token.Text))
+			(n.eqs)[val] = slices.Compact(newWords)
+		}
+	}
+}
+
+func (n *NAEQ_Processor) ProcessSentences(sentences []prose.Sentence) {
+	fmt.Println("method processSentences")
+	for _, sentence := range sentences {
+		doc, _ := prose.NewDocument(sentence.Text, prose.WithExtraction(false), prose.WithTagging(true))
+		val := 0
+		wordyTokens := []string{"SYM", ".", ",", "-", ":", ";", "\""}
+		for _, token := range doc.Tokens() {
+			if !slices.Contains(wordyTokens, token.Tag) {
+				val += EQalculateMod(token.Text)
+			}
+		}
+		newWords := append((n.eqs)[val], strings.ToUpper(strings.ReplaceAll(sentence.Text, "\n", "")))
+		(n.eqs)[val] = slices.Compact(newWords)
+	}
+}
+
+func (n *NAEQ_Processor) ProcessFile(filename string, pmode string) error {
+	fmt.Println("method processFile", filename)
+	f, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	if pmode == "word" {
+		doc, err := prose.NewDocument(string(f), prose.WithExtraction(false), prose.WithTagging(true))
+		if err != nil {
+			return err
+		}
+		n.ProcessTokens(doc.Tokens())
+	} else if pmode == "line" {
+		doc, err := prose.NewDocument(string(f), prose.WithExtraction(false), prose.WithTagging(false))
+		if err != nil {
+			return err
+		}
+		n.ProcessSentences(doc.Sentences())
+	} else {
+		return errors.New("can't do markov yet")
+	}
+	return nil
+}
+
+func (n *NAEQ_Processor) WriteToFiles(directory string) error {
+	// directory must exist. for all keys in the map, create/open NAEQ_key.md. Parse the whole file (just like the scanner above, actually)
+	// and append to the eqs value.
+	dirContents, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	// go through the values
+	// for each value, check if a fiel is there. create/open it and read values into a new eqs (for speed, rather than in the entire map again)
+	// then write the values back into that file sorted alphabetically
+	//fmt.Println("eqs before", *eqs)
+	for val := range n.eqs {
+		var str = fmt.Sprintf("NAEQ_%d.md", val)
+		//fmt.Println("looking for file", str)
+		filename := filepath.Join(directory, str)
+		// look for files in the directory. If it's there copy all its contents into the existing map
+		for i := range dirContents {
+			if dirContents[i].Name() == str {
+				n.ProcessFile(filename, "line")
+			}
+		}
+		// now eqs has all the strings from the file as well as from the input. os.Create will truncate a file!
+		f, err := os.Create(filename)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		w := bufio.NewWriter(f)
+		_, err = w.WriteString(strings.Join((n.eqs)[val], "\n") + "\n")
+		if err != nil {
+			return err
+		}
+		w.Flush()
+	}
+	//fmt.Println("eqs after", *eqs)
+	return nil
+}
+
+// function is called when traversing directories for each element
+// doing a little closure so the processing-mode flag can be passed in
+func visit(pmode string, pN *NAEQ_Processor) filepath.WalkFunc {
+	return func(p string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			err = pN.ProcessFile(p, pmode)
+		}
+		return err
 	}
 }
 
@@ -27,122 +128,6 @@ func isFlagPassed(name string) bool {
 		}
 	})
 	return found
-}
-
-// error checking
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
-// function is called when traversing directories for each element
-// doing a little closure so the processing-mode flag can be passed in
-func visit(pmode string, eqs *map[int][]string) filepath.WalkFunc {
-	return func(p string, info os.FileInfo, err error) error {
-		check(err)
-		if !info.IsDir() {
-			err := processFile(p, pmode, eqs)
-			return err
-		}
-		return nil
-	}
-}
-
-// from stack overflow: https://stackoverflow.com/questions/66643946/how-to-remove-duplicates-strings-or-int-from-slice-in-go
-func removeDuplicate[T string | int](sliceList []T) []T {
-	allKeys := make(map[T]bool)
-	list := []T{}
-	for _, item := range sliceList {
-		if _, value := allKeys[item]; !value {
-			allKeys[item] = true
-			list = append(list, item)
-		}
-	}
-	return list
-}
-
-func scanStrings(scanner *bufio.Scanner, eqs *map[int][]string) {
-	leqs := *eqs
-	for scanner.Scan() {
-		ns := ""
-		val := 0
-		// the string may be a line. Clearstring function is not optimal causing this weird extra code.
-		for _, w := range strings.Split(scanner.Text(), " ") {
-			cs := clearString(w)
-			val += EQalculateMod(cs)
-			// this makes too many spaces in the output
-			ns += " " + cs
-		}
-		leqs[val] = removeDuplicate[string](append(leqs[val], strings.ToUpper(strings.TrimSpace(ns))))
-	}
-}
-
-func processFile(filename string, pmode string, eqs *map[int][]string) error {
-	// map kv: keys are the EQ value, values are a slice of string {
-	//fmt.Println("gonna process a file!", filename)
-	f, err := os.Open(filename)
-	check(err)
-	defer f.Close()
-
-	scanner := bufio.NewScanner(bufio.NewReader(f))
-
-	if pmode == "word" {
-		//		fmt.Println("using word processing mode")
-		scanner.Split(bufio.ScanWords)
-	} else if pmode == "line" {
-		//		fmt.Println("using line processing mode")
-		scanner.Split(bufio.ScanLines)
-	} else {
-		return errors.New("can't do markov yet")
-	}
-
-	scanStrings(scanner, eqs)
-	return nil
-}
-
-func writeToFiles(directory string, eqs *map[int][]string) error {
-	// directory must exist. for all keys in the map, create/open NAEQ_key.md. Parse the whole file (just like the scanner above, actually)
-	// and append to the eqs value.
-	dirContents, err := os.ReadDir(directory)
-	if err != nil {
-		return err
-	}
-	// go through the values
-	// for each value, check if a fiel is there. create/open it and read values into a new eqs (for speed, rather than in the entire map again)
-	// then write the values back into that file sorted alphabetically
-	//fmt.Println("eqs before", *eqs)
-	for val := range *eqs {
-		var str = fmt.Sprintf("NAEQ_%d.md", val)
-		//fmt.Println("looking for file", str)
-		filename := filepath.Join(directory, str)
-		// look for files in the directory. If it's there copy all its contents into the existing map
-		for i := range dirContents {
-			if dirContents[i].Name() == str {
-				//fmt.Println("found it!")
-				file_eqs := make(map[int][]string)
-				err = processFile(filename, "line", &file_eqs)
-				if err != nil {
-					return err
-				}
-				copyEqsMap(*eqs, file_eqs)
-			}
-		}
-		// now eqs has all the strings from the file as well as from the input. os.Create will truncate a file!
-		f, err := os.Create(filename)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		w := bufio.NewWriter(f)
-		_, err = w.WriteString(strings.Join((*eqs)[val], "\n") + "\n")
-		if err != nil {
-			return err
-		}
-		w.Flush()
-	}
-	//fmt.Println("eqs after", *eqs)
-	return nil
 }
 
 // "strings"
@@ -184,23 +169,27 @@ func main() {
 	}
 
 	// handle the input source - a file, a directory of files or command line args. Build the map of eq values (value -> list of strings)
-	eqs := make(map[int][]string)
+	//eqs := make(map[int][]string)
+
+	var pN *NAEQ_Processor = new(NAEQ_Processor)
+	pN.eqs = make(map[int][]string)
+
 	if isFlagPassed("f") {
-		check(processFile(*filePtr, *processPtr, &eqs))
+		pN.ProcessFile(*filePtr, *processPtr)
 	} else if isFlagPassed("d") {
 		// read and process all files in a directory
-		filepath.Walk(*inputDirPtr, visit(*processPtr, &eqs))
+		filepath.Walk(*inputDirPtr, visit(*processPtr, pN))
 	} else { // not f or d, must be somthing in the args. Later: also handle stdin
-		r := strings.NewReader(strings.Join(flag.Args(), "\n"))
-		scanner := bufio.NewScanner(r)
-		scanStrings(scanner, &eqs)
+		doc, _ := prose.NewDocument(strings.Join(flag.Args(), " "), prose.WithExtraction(false))
+		pN.ProcessTokens(doc.Tokens())
 	}
 
 	// now handle output; write it to files in the output directory, or write to stdout
 	if isFlagPassed("o") {
-		check(writeToFiles(*outputDirPtr, &eqs))
+		//		check(writeToFiles(*outputDirPtr, &(pN.eqs)))
+		_ = pN.WriteToFiles(*outputDirPtr)
 	} else {
-		for val, words := range eqs {
+		for val, words := range pN.eqs {
 			fmt.Println(val, words)
 		}
 	}

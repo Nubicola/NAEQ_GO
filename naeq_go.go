@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"unicode"
 
@@ -36,24 +35,26 @@ func removeDuplicate[T string | int](sliceList []T) []T {
 	return list
 }
 
-func (n *NAEQ_Processor) ProcessTokens(filename string) {
-	f, err := os.ReadFile(filename)
+func (n *NAEQ_Processor) ProcessString(s string) {
+	doc, err := prose.NewDocument(s, prose.WithExtraction(false), prose.WithTagging(true))
 	if err != nil {
 		panic(err)
 	}
-	doc, err := prose.NewDocument(string(f), prose.WithExtraction(false), prose.WithTagging(true))
-	if err != nil {
-		panic(err)
-	}
-
 	wordyTokens := []string{"SYM", ".", ",", "-", ":", ";", "\""}
 	for _, token := range doc.Tokens() {
 		val := EQalculateMod(token.Text)
 		if !slices.Contains(wordyTokens, token.Tag) {
 			(n.eqs)[val] = removeDuplicate(append((n.eqs)[val], strings.ToUpper(token.Text)))
 		}
-		//(n.eqs)[val] = removeDuplicate((n.eqs)[val])
 	}
+}
+
+func (n *NAEQ_Processor) ProcessTokens(filename string) {
+	f, err := os.ReadFile(filename)
+	if err != nil {
+		panic(err)
+	}
+	n.ProcessString(string(f))
 }
 
 func (n *NAEQ_Processor) processLine(line string) {
@@ -99,6 +100,7 @@ func (n *NAEQ_Processor) ProcessSentences(filename string) {
 	for _, sentence := range doc.Sentences() {
 		n.processLine(sentence.Text)
 	}
+	delete(n.eqs, 0)
 }
 
 func (n *NAEQ_Processor) ProcessFile(filename string, pmode string) error {
@@ -225,9 +227,7 @@ func main() {
 		// read and process all files in a directory
 		filepath.Walk(*inputDirPtr, visit(*processPtr, pN))
 	} else { // not f or d, must be somthing in the args. Later: also handle stdin
-		fmt.Println("can't do std in now :P")
-		/*		doc, _ := prose.NewDocument(strings.Join(flag.Args(), " "), prose.WithExtraction(false))
-				pN.ProcessTokens(doc.Tokens())*/
+		pN.ProcessString(strings.Join(flag.Args(), " "))
 	}
 
 	// now handle output; write it to files in the output directory, or write to stdout
@@ -241,18 +241,10 @@ func main() {
 	}
 }
 
-var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z]+`)
-
-//var nonAlphanumericRegex = regexp.MustCompile(`(\b[A-Z0-9]['A-Z0-9]+\b|\b[A-Z]\b)\|?`)
-
-func clearString(str string) string {
-	return nonAlphanumericRegex.ReplaceAllString(str, "")
-}
-
 // calculate EQ of word
 func EQalculateMod(word string) int {
 	value := 0
-	for _, c := range clearString(word) {
+	for _, c := range word {
 		value += int(unicode.ToLower(c)-'a')*19%26 + 1
 	}
 	return value

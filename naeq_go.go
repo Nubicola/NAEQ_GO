@@ -17,54 +17,97 @@ import (
 
 type NAEQ_Processor struct {
 	eqs map[int][]string
+	/*
+	   input_mode, output_mode           string
+	   input_directory, output_directory string
+	*/
 }
 
-func (n *NAEQ_Processor) ProcessTokens(tokens []prose.Token) {
-	fmt.Println("method processTokens")
+// from stack overflow: https://stackoverflow.com/questions/66643946/how-to-remove-duplicates-strings-or-int-from-slice-in-go
+func removeDuplicate[T string | int](sliceList []T) []T {
+	allKeys := make(map[T]bool)
+	list := []T{}
+	for _, item := range sliceList {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
+func (n *NAEQ_Processor) ProcessTokens(filename string) {
+	f, err := os.ReadFile(filename)
+	if err != nil {
+		panic(err)
+	}
+	doc, err := prose.NewDocument(string(f), prose.WithExtraction(false), prose.WithTagging(true))
+	if err != nil {
+		panic(err)
+	}
+
 	wordyTokens := []string{"SYM", ".", ",", "-", ":", ";", "\""}
-	for _, token := range tokens {
+	for _, token := range doc.Tokens() {
 		val := EQalculateMod(token.Text)
 		if !slices.Contains(wordyTokens, token.Tag) {
-			newWords := append((n.eqs)[val], strings.ToUpper(token.Text))
-			(n.eqs)[val] = slices.Compact(newWords)
+			(n.eqs)[val] = removeDuplicate(append((n.eqs)[val], strings.ToUpper(token.Text)))
 		}
+		//(n.eqs)[val] = removeDuplicate((n.eqs)[val])
 	}
 }
 
-func (n *NAEQ_Processor) ProcessSentences(sentences []prose.Sentence) {
-	fmt.Println("method processSentences")
-	for _, sentence := range sentences {
-		doc, _ := prose.NewDocument(sentence.Text, prose.WithExtraction(false), prose.WithTagging(true))
-		val := 0
-		wordyTokens := []string{"SYM", ".", ",", "-", ":", ";", "\""}
-		for _, token := range doc.Tokens() {
-			if !slices.Contains(wordyTokens, token.Tag) {
-				val += EQalculateMod(token.Text)
-			}
+func (n *NAEQ_Processor) processLine(line string) {
+	doc, _ := prose.NewDocument(line, prose.WithExtraction(false), prose.WithTagging(true))
+	val := 0
+	wordyTokens := []string{"SYM", ".", ",", "-", ":", ";", "\""}
+	ns := []string{}
+	for _, token := range doc.Tokens() {
+		if !slices.Contains(wordyTokens, token.Tag) {
+			val += EQalculateMod(token.Text)
+			ns = append(ns, token.Text)
 		}
-		newWords := append((n.eqs)[val], strings.ToUpper(strings.ReplaceAll(sentence.Text, "\n", "")))
-		(n.eqs)[val] = slices.Compact(newWords)
+	}
+	(n.eqs)[val] = removeDuplicate(append((n.eqs)[val], strings.ToUpper(strings.Join(ns, " "))))
+	//slices.Sort(n.eqs[val])
+	//slices.Compact(n.eqs[val])
+}
+
+// calculates EQ value on a line-by-line basis
+func (n *NAEQ_Processor) ProcessLines(filename string) {
+	f, err := os.Open(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(bufio.NewReader(f))
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		n.processLine(scanner.Text())
+	}
+}
+
+// calculates EQ value on a sentence basis
+func (n *NAEQ_Processor) ProcessSentences(filename string) {
+	f, err := os.ReadFile(filename)
+	if err != nil {
+		panic(err)
+	}
+	doc, err := prose.NewDocument(string(f), prose.WithExtraction(false), prose.WithTagging(false))
+	if err != nil {
+		panic(err)
+	}
+	for _, sentence := range doc.Sentences() {
+		n.processLine(sentence.Text)
 	}
 }
 
 func (n *NAEQ_Processor) ProcessFile(filename string, pmode string) error {
-	fmt.Println("method processFile", filename)
-	f, err := os.ReadFile(filename)
-	if err != nil {
-		return err
-	}
 	if pmode == "word" {
-		doc, err := prose.NewDocument(string(f), prose.WithExtraction(false), prose.WithTagging(true))
-		if err != nil {
-			return err
-		}
-		n.ProcessTokens(doc.Tokens())
+		n.ProcessTokens(filename)
+	} else if pmode == "sent" {
+		n.ProcessSentences(filename)
 	} else if pmode == "line" {
-		doc, err := prose.NewDocument(string(f), prose.WithExtraction(false), prose.WithTagging(false))
-		if err != nil {
-			return err
-		}
-		n.ProcessSentences(doc.Sentences())
+		n.ProcessLines(filename)
 	} else {
 		return errors.New("can't do markov yet")
 	}
@@ -79,12 +122,10 @@ func (n *NAEQ_Processor) WriteToFiles(directory string) error {
 		return err
 	}
 	// go through the values
-	// for each value, check if a fiel is there. create/open it and read values into a new eqs (for speed, rather than in the entire map again)
+	// for each value, check if a file is there. create/open it and read values into a new eqs (for speed, rather than in the entire map again)
 	// then write the values back into that file sorted alphabetically
-	//fmt.Println("eqs before", *eqs)
 	for val := range n.eqs {
 		var str = fmt.Sprintf("NAEQ_%d.md", val)
-		//fmt.Println("looking for file", str)
 		filename := filepath.Join(directory, str)
 		// look for files in the directory. If it's there copy all its contents into the existing map
 		for i := range dirContents {
@@ -105,8 +146,15 @@ func (n *NAEQ_Processor) WriteToFiles(directory string) error {
 		}
 		w.Flush()
 	}
-	//fmt.Println("eqs after", *eqs)
 	return nil
+}
+
+func MakeNewNQP() *NAEQ_Processor {
+	var pN = new(NAEQ_Processor)
+	pN.eqs = make(map[int][]string)
+	/*	pN.input_mode =
+		pN.input_directory = */
+	return pN
 }
 
 // function is called when traversing directories for each element
@@ -144,7 +192,7 @@ func isFlagPassed(name string) bool {
 // -d=directory -- reads all files in the directory and processes them (sequentially)
 // -o=directory -- writes/appends to NAEQ_X.md files in named directory
 func main() {
-	processPtr := flag.String("p", "word", "processing mode: word, line or markov")
+	processPtr := flag.String("p", "word", "processing mode: word, line, sent or markov")
 	inputDirPtr := flag.String("d", ".", "input directory; incompatible with -f")
 	outputDirPtr := flag.String("o", "", "output directory; if not specified, everything goes to stdout. if specified, output will be to individual files for each EQ value")
 	filePtr := flag.String("f", "", "input file, incompatible with -d and command-line words to process")
@@ -163,16 +211,13 @@ func main() {
 		return
 	}
 	// check that processing mode parameter is within scope
-	if !(*processPtr == "word" || *processPtr == "line" || *processPtr == "markov") {
+	if !(*processPtr == "word" || *processPtr == "line" || *processPtr == "markov" || *processPtr == "sent") {
 		flag.PrintDefaults()
 		return
 	}
 
 	// handle the input source - a file, a directory of files or command line args. Build the map of eq values (value -> list of strings)
-	//eqs := make(map[int][]string)
-
-	var pN *NAEQ_Processor = new(NAEQ_Processor)
-	pN.eqs = make(map[int][]string)
+	var pN *NAEQ_Processor = MakeNewNQP()
 
 	if isFlagPassed("f") {
 		pN.ProcessFile(*filePtr, *processPtr)
@@ -180,8 +225,9 @@ func main() {
 		// read and process all files in a directory
 		filepath.Walk(*inputDirPtr, visit(*processPtr, pN))
 	} else { // not f or d, must be somthing in the args. Later: also handle stdin
-		doc, _ := prose.NewDocument(strings.Join(flag.Args(), " "), prose.WithExtraction(false))
-		pN.ProcessTokens(doc.Tokens())
+		fmt.Println("can't do std in now :P")
+		/*		doc, _ := prose.NewDocument(strings.Join(flag.Args(), " "), prose.WithExtraction(false))
+				pN.ProcessTokens(doc.Tokens())*/
 	}
 
 	// now handle output; write it to files in the output directory, or write to stdout

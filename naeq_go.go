@@ -69,8 +69,6 @@ func (n *NAEQ_Processor) processLine(line string) {
 		}
 	}
 	(n.eqs)[val] = removeDuplicate(append((n.eqs)[val], strings.ToUpper(strings.Join(ns, " "))))
-	//slices.Sort(n.eqs[val])
-	//slices.Compact(n.eqs[val])
 }
 
 // calculates EQ value on a line-by-line basis
@@ -100,7 +98,6 @@ func (n *NAEQ_Processor) ProcessSentences(filename string) {
 	for _, sentence := range doc.Sentences() {
 		n.processLine(sentence.Text)
 	}
-	delete(n.eqs, 0)
 }
 
 func (n *NAEQ_Processor) ProcessFile(filename string, pmode string) error {
@@ -116,6 +113,15 @@ func (n *NAEQ_Processor) ProcessFile(filename string, pmode string) error {
 	return nil
 }
 
+func (n *NAEQ_Processor) Verify() {
+	for k := range n.eqs {
+		if k <= 0 {
+			fmt.Println("deleting", k, n.eqs[k])
+			delete(n.eqs, k)
+		}
+	}
+
+}
 func (n *NAEQ_Processor) WriteToFiles(directory string) error {
 	// directory must exist. for all keys in the map, create/open NAEQ_key.md. Parse the whole file (just like the scanner above, actually)
 	// and append to the eqs value.
@@ -230,6 +236,7 @@ func main() {
 		pN.ProcessString(strings.Join(flag.Args(), " "))
 	}
 
+	pN.Verify()
 	// now handle output; write it to files in the output directory, or write to stdout
 	if isFlagPassed("o") {
 		//		check(writeToFiles(*outputDirPtr, &(pN.eqs)))
@@ -245,7 +252,10 @@ func main() {
 func EQalculateMod(word string) int {
 	value := 0
 	for _, c := range word {
-		value += int(unicode.ToLower(c)-'a')*19%26 + 1
+		i := int(unicode.ToLower(c))
+		if i >= int('a') {
+			value += (i-int('a'))*19%26 + 1
+		}
 	}
 	return value
 }

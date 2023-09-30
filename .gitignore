@@ -2,5 +2,3 @@ NAEQ_GO
 out/
 test/
 foo.txt
-go.mod
-go.sum

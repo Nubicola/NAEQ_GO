@@ -47,6 +47,7 @@ func (eqfc *EQFirstCalculator) Calculate(ss []string) int {
 	var eqbc = new(EQBaseCalculator)
 	var xs = make([]string, 1)
 	xs[0] = sb.String()
+	fmt.Println(xs[0])
 	return eqbc.Calculate(xs)
 }
 
@@ -88,6 +89,12 @@ func MakeNewNQP(calcmode string) *NAEQ_Processor {
 // core struct: NAEQ_Processor
 // given string and mode, process the string (word and sentence mode)
 // given bufio.scanner, process lines (only "line" mode)
+
+func (n *NAEQ_Processor) CorrespondingWords(s string) []string {
+	var xs = make([]string, 1)
+	xs[0] = s
+	return (n.eqs[n.calculator.Calculate(xs)])
+}
 
 func (n *NAEQ_Processor) ProcessString(s, mode string) {
 	// modes can be "word" and "sent"
